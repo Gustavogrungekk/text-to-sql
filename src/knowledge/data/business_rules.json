@@ -1,0 +1,14 @@
+{
+  "analytics": [
+    "Always filter partitioned tables by the 'dt' partition column to avoid full scans.",
+    "Transaction status values are: completed, pending, refunded, failed.",
+    "Payment methods are: credit_card, pix, boleto.",
+    "Event types include: click, view, purchase, signup.",
+    "Amount is always in BRL (Brazilian Real).",
+    "Use dt in format YYYY-MM-DD for date partitions.",
+    "The 'users' and 'products' tables are not partitioned — full scans are acceptable for these.",
+    "Always use 'completed' status when calculating revenue to exclude refunds and failed transactions.",
+    "Device types are: mobile, desktop, tablet.",
+    "User plans are: free, pro, enterprise."
+  ]
+}

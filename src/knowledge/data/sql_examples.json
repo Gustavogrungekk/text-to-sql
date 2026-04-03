@@ -1,0 +1,11 @@
+{
+  "analytics": [
+    "SELECT event_type, COUNT(*) AS total FROM analytics.events WHERE dt = '2024-01-15' GROUP BY event_type ORDER BY total DESC LIMIT 10",
+    "SELECT user_id, SUM(amount) AS total_spent FROM analytics.transactions WHERE dt BETWEEN '2024-01-01' AND '2024-01-31' AND status = 'completed' GROUP BY user_id ORDER BY total_spent DESC LIMIT 20",
+    "SELECT p.category, COUNT(*) AS num_transactions, SUM(t.amount) AS revenue FROM analytics.transactions t JOIN analytics.products p ON t.product_id = p.product_id WHERE t.dt BETWEEN '2024-01-01' AND '2024-01-31' AND t.status = 'completed' GROUP BY p.category ORDER BY revenue DESC LIMIT 10",
+    "SELECT DATE(event_timestamp) AS day, COUNT(DISTINCT user_id) AS dau FROM analytics.events WHERE dt BETWEEN '2024-01-01' AND '2024-01-07' GROUP BY DATE(event_timestamp) ORDER BY day",
+    "SELECT u.region, COUNT(DISTINCT t.user_id) AS buyers, SUM(t.amount) AS revenue FROM analytics.transactions t JOIN analytics.users u ON t.user_id = u.user_id WHERE t.dt BETWEEN '2024-01-01' AND '2024-01-31' AND t.status = 'completed' GROUP BY u.region ORDER BY revenue DESC LIMIT 10",
+    "SELECT payment_method, COUNT(*) AS cnt, SUM(amount) AS total FROM analytics.transactions WHERE dt = '2024-01-15' AND status = 'completed' GROUP BY payment_method ORDER BY total DESC",
+    "SELECT device_type, COUNT(*) AS events FROM analytics.events WHERE dt = '2024-01-15' GROUP BY device_type ORDER BY events DESC"
+  ]
+}

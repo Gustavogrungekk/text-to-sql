@@ -1,0 +1,62 @@
+{
+  "databases": {
+    "analytics": {
+      "description": "Core analytics database with user events, transactions and product data.",
+      "tables": {
+        "events": {
+          "description": "User interaction events captured from web and mobile platforms.",
+          "columns": [
+            {"name": "event_id", "type": "STRING", "description": "Unique event identifier"},
+            {"name": "user_id", "type": "STRING", "description": "User identifier"},
+            {"name": "event_type", "type": "STRING", "description": "Type of event (click, view, purchase, signup)"},
+            {"name": "event_timestamp", "type": "TIMESTAMP", "description": "When the event occurred"},
+            {"name": "page_url", "type": "STRING", "description": "URL of the page where the event happened"},
+            {"name": "device_type", "type": "STRING", "description": "Device type (mobile, desktop, tablet)"},
+            {"name": "session_id", "type": "STRING", "description": "Session identifier"},
+            {"name": "dt", "type": "STRING", "description": "Partition key in YYYY-MM-DD format"}
+          ],
+          "partitions": ["dt"]
+        },
+        "transactions": {
+          "description": "Financial transactions from e-commerce platform.",
+          "columns": [
+            {"name": "transaction_id", "type": "STRING", "description": "Unique transaction identifier"},
+            {"name": "user_id", "type": "STRING", "description": "User identifier"},
+            {"name": "amount", "type": "DOUBLE", "description": "Transaction amount in BRL"},
+            {"name": "currency", "type": "STRING", "description": "Currency code"},
+            {"name": "status", "type": "STRING", "description": "Transaction status (completed, pending, refunded, failed)"},
+            {"name": "payment_method", "type": "STRING", "description": "Payment method (credit_card, pix, boleto)"},
+            {"name": "product_id", "type": "STRING", "description": "Product identifier"},
+            {"name": "created_at", "type": "TIMESTAMP", "description": "Transaction creation timestamp"},
+            {"name": "dt", "type": "STRING", "description": "Partition key in YYYY-MM-DD format"}
+          ],
+          "partitions": ["dt"]
+        },
+        "products": {
+          "description": "Product catalog.",
+          "columns": [
+            {"name": "product_id", "type": "STRING", "description": "Unique product identifier"},
+            {"name": "product_name", "type": "STRING", "description": "Product display name"},
+            {"name": "category", "type": "STRING", "description": "Product category"},
+            {"name": "subcategory", "type": "STRING", "description": "Product subcategory"},
+            {"name": "price", "type": "DOUBLE", "description": "Current price in BRL"},
+            {"name": "is_active", "type": "BOOLEAN", "description": "Whether the product is currently active"}
+          ],
+          "partitions": []
+        },
+        "users": {
+          "description": "Registered user profiles.",
+          "columns": [
+            {"name": "user_id", "type": "STRING", "description": "Unique user identifier"},
+            {"name": "name", "type": "STRING", "description": "User full name"},
+            {"name": "email", "type": "STRING", "description": "User email address"},
+            {"name": "signup_date", "type": "DATE", "description": "Date the user signed up"},
+            {"name": "region", "type": "STRING", "description": "User geographic region"},
+            {"name": "plan", "type": "STRING", "description": "Subscription plan (free, pro, enterprise)"}
+          ],
+          "partitions": []
+        }
+      }
+    }
+  }
+}
