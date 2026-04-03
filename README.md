@@ -1,80 +1,79 @@
 # Text-to-SQL Multi-Agent System
 
-> Sistema multi-agente de producao que converte perguntas em linguagem natural em SQL otimizado para AWS Athena, executa queries, gera insights de negocio, cria graficos e oferece download de dados (CSV, XLSX, JSON).
+> Production-grade multi-agent system that translates natural language questions into optimized SQL for AWS Athena, executes queries, generates business insights, creates charts, and offers data download (CSV, XLSX, JSON).
 
 ---
 
 ## TL;DR
 
-Voce faz uma pergunta em portugues, o sistema entende a intencao, escolhe o banco e tabelas certos, gera e valida o SQL, executa no Athena, analisa os resultados e responde com texto, tabela interativa, grafico (se pedido) e botoes de download. Tudo dentro de um chat Streamlit.
+You ask a question in plain language, the system understands the intent, picks the right database and tables, generates and validates SQL, runs it on Athena, analyzes the results, and replies with text, an interactive table, a chart (if requested), and download buttons. All inside a Streamlit chat UI.
 
-**Em uma frase:** _"Linguagem natural entra, dados analisados saem."_
-
----
-
-## O que e?
-
-Um pipeline de agentes inteligentes (LLM-driven) orquestrado por LangGraph que:
-
-1. **Classifica** a intencao da pergunta (query, saudacao, follow-up, esclarecimento, export, visualizacao, fora de escopo).
-2. **Roteia** para o banco de dados e tabelas corretos usando metadados do Glue Catalog.
-3. **Gera SQL** seguro e otimizado para Athena, com exemplos e regras de negocio no contexto.
-4. **Valida** o SQL (heuristica + LLM) e retenta ate 3x em caso de erro.
-5. **Executa** no Athena via boto3.
-6. **Analisa resultado vazio** — classifica se e esperado, suspeito ou ambiguo (nunca inventa dados).
-7. **Gera insights** de negocio a partir dos dados retornados.
-8. **Cria graficos** Plotly (bar, line, pie, scatter, heatmap) quando o usuario solicita.
-9. **Oferece download** direto de CSV, XLSX e JSON na interface.
-10. **Suporta multi-base** — detecta quando a pergunta menciona 2+ bancos e executa uma query por banco.
-
-## Para que serve?
-
-- **Analistas de negocio** que querem consultar dados sem escrever SQL.
-- **Times de dados** que precisam de um assistente de self-service analytics.
-- **Prototipagem rapida** de interfaces conversacionais sobre data lakes no Athena.
+**In one sentence:** _"Natural language in, analyzed data out."_
 
 ---
 
-## Fluxograma do Agente
+## What Is It?
+
+An LLM-driven agent pipeline orchestrated by LangGraph that:
+
+1. **Classifies** the question intent (query, greeting, follow-up, clarification, export, visualization, out of scope).
+2. **Routes** to the correct database and tables using Glue Catalog metadata.
+3. **Generates** safe, optimized SQL for Athena with examples and business rules in context.
+4. **Validates** the SQL (heuristic + LLM) and retries up to 3 times on failure.
+5. **Executes** on Athena via boto3.
+6. **Analyzes empty results** — classifies whether it's expected, suspicious, or ambiguous (never fabricates data).
+7. **Generates business insights** from the returned data.
+8. **Creates Plotly charts** (bar, line, pie, scatter, heatmap) when the user requests them.
+9. **Offers direct download** of CSV, XLSX, and JSON from the interface.
+10. **Supports multi-database queries** — detects when a question mentions 2+ databases and runs one query per database.
+
+## Who Is It For?
+
+- **Business analysts** who want to query data without writing SQL.
+- **Data teams** that need a self-service analytics assistant.
+- **Rapid prototyping** of conversational interfaces over Athena data lakes.
+
+---
+
+## Agent Flowchart
 
 ```
                                     ┌──────────────┐
-                                    │   Usuario     │
+                                    │     User      │
                                     └──────┬───────┘
                                            │
                                            v
                                     ┌──────────────┐
-                                    │  Classifier   │  Classifica intencao + extrai datas
+                                    │  Classifier   │  Classifies intent + extracts dates
                                     └──────┬───────┘
                                            │
                           ┌────────────────┼────────────────┐
                           │                │                │
-                     nao precisa      precisa SQL      precisa
-                       de SQL              │           esclarecimento
-                          │                │                │
+                     no SQL needed    SQL needed       needs
+                          │                │           clarification
                           v                v                v
                    ┌────────────┐   ┌───────────┐   ┌────────────────┐
-                   │  Resposta  │   │  Router    │   │  Pede mais     │
-                   │  direta    │   │            │   │  contexto      │
+                   │   Direct   │   │  Router    │   │  Ask for more  │
+                   │  Response  │   │            │   │   context      │
                    └────────────┘   └─────┬─────┘   └────────────────┘
                                           │
                                           v
                                    ┌──────────────┐
-                                   │   Schema      │  Carrega colunas, exemplos, regras
+                                   │   Schema      │  Loads columns, examples, rules
                                    │  Retrieval    │
                                    └──────┬───────┘
                                           │
                                           v
                               ┌──────────────────────┐
-                              │    SQL Generator      │ ◄─── retry (ate 3x)
+                              │    SQL Generator      │ ◄─── retry (up to 3x)
                               └──────────┬───────────┘            │
                                          │                        │
                                          v                        │
                               ┌──────────────────────┐            │
                               │    SQL Validator      │───────────┘
-                              │  (heuristica + LLM)   │  invalido + tentativas restantes
+                              │  (heuristic + LLM)    │  invalid + retries left
                               └──────────┬───────────┘
-                                         │ valido
+                                         │ valid
                                          v
                               ┌──────────────────────┐
                               │  Execution (Athena)   │
@@ -82,7 +81,7 @@ Um pipeline de agentes inteligentes (LLM-driven) orquestrado por LangGraph que:
                                          │
                           ┌──────────────┼──────────────┐
                           │              │              │
-                        falha       0 linhas       N linhas
+                       failure       0 rows         N rows
                           │              │              │
                           v              v              v
                    ┌──────────┐  ┌─────────────┐  ┌──────────┐
@@ -92,7 +91,7 @@ Um pipeline de agentes inteligentes (LLM-driven) orquestrado por LangGraph que:
                                         │              │
                                         v         ┌────┴────────────┐
                                  ┌──────────┐     │                 │
-                                 │ Response │  pediu grafico?   nao pediu
+                                 │ Response │  chart requested?  not requested
                                  │ Composer │     │                 │
                                  └──────────┘     v                 v
                                            ┌─────────────┐  ┌──────────┐
@@ -107,44 +106,44 @@ Um pipeline de agentes inteligentes (LLM-driven) orquestrado por LangGraph que:
                                            └──────────┘
 ```
 
-**Modo multi-base:** quando a pergunta menciona explicitamente 2+ bancos, o pipeline roda uma query completa por banco (sequencialmente) e consolida as respostas. Athena aceita apenas 1 statement por execucao — multi-statement com `;` e bloqueado pelo validator.
+**Multi-database mode:** when the question explicitly mentions 2+ databases, the pipeline runs a full query per database (sequentially) and consolidates the responses. Athena only accepts 1 statement per execution — multi-statement SQL with `;` is blocked by the validator.
 
 ---
 
-## Stack Tecnologica
+## Tech Stack
 
-| Camada | Tecnologia |
+| Layer | Technology |
 |---|---|
 | LLM | OpenAI GPT-4o (`openai` SDK) |
-| Orquestracao | LangGraph (maquina de estados) |
+| Orchestration | LangGraph (state machine) |
 | Cloud | AWS Athena via `boto3` |
 | UI | Streamlit |
-| Graficos | Plotly Express |
-| Dados | Pandas |
-| Validacao | Pydantic v2 |
-| Testes | pytest (mocks de LLM + Athena, sem chamadas reais) |
+| Charts | Plotly Express |
+| Data | Pandas |
+| Validation | Pydantic v2 |
+| Tests | pytest (mocked LLM + Athena, no real API calls) |
 
 ---
 
-## Pre-requisitos
+## Prerequisites
 
-- **Python** 3.10+ (recomendado 3.12)
-- **Conta AWS** com permissao de Athena + Glue Catalog
-- **Bucket S3** para output do Athena
-- **Chave OpenAI** valida (GPT-4o)
+- **Python** 3.10+ (recommended 3.12)
+- **AWS account** with Athena + Glue Catalog permissions
+- **S3 bucket** for Athena query output
+- **OpenAI API key** (GPT-4o)
 
 ---
 
-## Instalacao Passo a Passo
+## Step-by-Step Installation
 
-### 1. Clone o repositorio
+### 1. Clone the repository
 
 ```bash
-git clone <url-do-repo>
+git clone <repo-url>
 cd text-to-sql
 ```
 
-### 2. Crie e ative o ambiente virtual
+### 2. Create and activate a virtual environment
 
 **Windows (PowerShell):**
 
@@ -160,13 +159,13 @@ python -m venv .venv
 source .venv/bin/activate
 ```
 
-### 3. Instale dependencias
+### 3. Install dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### 4. Configure as variaveis de ambiente
+### 4. Set up environment variables
 
 **Windows:**
 
@@ -180,28 +179,28 @@ Copy-Item .env.example .env
 cp .env.example .env
 ```
 
-Edite o `.env` com os seus dados:
+Edit `.env` with your credentials:
 
 ```env
 OPENAI_API_KEY=sk-...
 AWS_ACCESS_KEY_ID=AKIA...
 AWS_SECRET_ACCESS_KEY=...
 AWS_DEFAULT_REGION=us-east-1
-ATHENA_OUTPUT_BUCKET=s3://seu-bucket-athena-results/
+ATHENA_OUTPUT_BUCKET=s3://your-athena-results-bucket/
 ATHENA_WORKGROUP=primary
 ATHENA_CATALOG_NAME=AwsDataCatalog
 CATALOG_CACHE_TTL_SECONDS=300
 ```
 
-### 5. Rode os testes
+### 5. Run the tests
 
 ```bash
 pytest
 ```
 
-Todos os testes usam mocks — nenhuma chamada real a APIs e feita.
+All tests use mocks — no real API calls are made.
 
-### 6. Inicie a aplicacao
+### 6. Start the application
 
 ```bash
 streamlit run app.py
@@ -209,145 +208,145 @@ streamlit run app.py
 
 ---
 
-## Configuracao e Personalizacao
+## Configuration & Customization
 
-### Variaveis de ambiente (`.env`)
+### Environment Variables (`.env`)
 
-| Variavel | Descricao | Default |
+| Variable | Description | Default |
 |---|---|---|
-| `OPENAI_API_KEY` | Chave da API OpenAI | — |
-| `AWS_ACCESS_KEY_ID` | Credencial AWS | — |
-| `AWS_SECRET_ACCESS_KEY` | Credencial AWS | — |
-| `AWS_DEFAULT_REGION` | Regiao do Athena | `us-east-1` |
-| `ATHENA_OUTPUT_BUCKET` | Bucket S3 para resultados | `s3://athena-results/` |
-| `ATHENA_WORKGROUP` | Workgroup do Athena | `primary` |
-| `ATHENA_CATALOG_NAME` | Data catalog do Glue | `AwsDataCatalog` |
-| `CATALOG_CACHE_TTL_SECONDS` | TTL do cache do catalogo (segundos) | `300` |
+| `OPENAI_API_KEY` | OpenAI API key | — |
+| `AWS_ACCESS_KEY_ID` | AWS credential | — |
+| `AWS_SECRET_ACCESS_KEY` | AWS credential | — |
+| `AWS_DEFAULT_REGION` | Athena region | `us-east-1` |
+| `ATHENA_OUTPUT_BUCKET` | S3 bucket for query results | `s3://athena-results/` |
+| `ATHENA_WORKGROUP` | Athena workgroup | `primary` |
+| `ATHENA_CATALOG_NAME` | Glue data catalog | `AwsDataCatalog` |
+| `CATALOG_CACHE_TTL_SECONDS` | Catalog cache TTL in seconds | `300` |
 
-### Metadados de negocio
+### Business Metadata
 
-Enriquecer estes arquivos melhora diretamente a qualidade do SQL gerado:
+Enriching these files directly improves the quality of generated SQL:
 
-| Arquivo | O que colocar |
+| File | What to include |
 |---|---|
-| `src/knowledge/data/databases.json` | Descricoes de tabelas e colunas |
-| `src/knowledge/data/sql_examples.json` | Exemplos de queries reais por dominio |
-| `src/knowledge/data/business_rules.json` | Regras que o gerador deve respeitar (ex.: "sempre filtrar por particao dt") |
+| `src/knowledge/data/databases.json` | Table and column descriptions |
+| `src/knowledge/data/sql_examples.json` | Real query examples per domain |
+| `src/knowledge/data/business_rules.json` | Rules the generator must follow (e.g., "always filter by partition column dt") |
 
-### Guardrails e limites (`src/config.py` → `GuardrailsConfig`)
+### Guardrails & Limits (`src/config.py` → `GuardrailsConfig`)
 
-| Parametro | Descricao | Default |
+| Parameter | Description | Default |
 |---|---|---|
-| `default_limit` | LIMIT adicionado automaticamente quando ausente | `10000` |
-| `max_limit` | Teto maximo de linhas por query | `10000` |
-| `retry_attempts` | Tentativas de regeneracao de SQL apos falha de validacao | `3` |
-| `max_export_rows` | Maximo de linhas para export | `50000` |
-| `require_filter` | Exige clausula WHERE | `True` |
-| `require_limit` | Exige clausula LIMIT | `True` |
-| `cost_threshold_bytes` | Limite em bytes escaneados para alerta | `10 GB` |
+| `default_limit` | LIMIT auto-added when missing | `10000` |
+| `max_limit` | Hard cap on rows per query | `10000` |
+| `retry_attempts` | SQL regeneration attempts after validation failure | `3` |
+| `max_export_rows` | Max rows for data export | `50000` |
+| `require_filter` | Require WHERE clause | `True` |
+| `require_limit` | Require LIMIT clause | `True` |
+| `cost_threshold_bytes` | Scanned bytes threshold for alerts | `10 GB` |
 
-### Modelo LLM (`src/config.py` → `LLMConfig`)
+### LLM Model (`src/config.py` → `LLMConfig`)
 
-| Parametro | Descricao | Default |
+| Parameter | Description | Default |
 |---|---|---|
-| `model` | Modelo OpenAI | `gpt-4o` |
-| `temperature` | Criatividade (0 = deterministico) | `0.0` |
-| `max_tokens` | Limite de tokens na resposta | `4096` |
+| `model` | OpenAI model | `gpt-4o` |
+| `temperature` | Creativity (0 = deterministic) | `0.0` |
+| `max_tokens` | Response token limit | `4096` |
 
-### Interface (`app.py`)
+### UI Settings (`app.py`)
 
-| Item | O que faz |
+| Item | Purpose |
 |---|---|
-| `MAX_PERSISTED_ROWS` | Linhas mantidas no historico do chat por resposta (default: `100`) |
-| `chart_keywords` | Palavras que ativam geracao de grafico (ex.: "grafico", "chart", "plot") |
-| `chart_type_map` | Mapeamento de palavras para tipo Plotly (ex.: "pizza" → `pie`) |
+| `MAX_PERSISTED_ROWS` | Rows kept in chat history per response (default: `100`) |
+| `chart_keywords` | Words that trigger chart generation (e.g., "grafico", "chart", "plot") |
+| `chart_type_map` | Word-to-Plotly-type mapping (e.g., "pizza" → `pie`) |
 
-### Restringir bancos/tabelas (opcional)
+### Restrict Databases/Tables (optional)
 
-Em `src/config.py` → `AppConfig`, preencha `allowed_databases` e `allowed_tables` para limitar o escopo em producao.
+In `src/config.py` → `AppConfig`, populate `allowed_databases` and `allowed_tables` to limit scope in production.
 
 ---
 
-## Guardrails de Seguranca
+## Security Guardrails
 
-| Guardrail | Descricao |
+| Guardrail | Description |
 |---|---|
-| SQL somente SELECT | Operacoes DML/DDL (DROP, DELETE, INSERT, UPDATE, ALTER) sao bloqueadas |
-| Statement unico | Multi-statement com `;` e rejeitado (requisito Athena) |
-| LIMIT automatico | Adicionado quando ausente (default: 10.000) |
-| LIMIT maximo | Hard-cap de 10.000 linhas por query |
-| Filtro de particao | Exigido em tabelas particionadas |
-| Retry com feedback | Ate 3 tentativas com erros anteriores injetados no prompt |
-| Export limitado | Maximo de 50.000 linhas para download |
-| Resultado vazio analisado | Classifica se e esperado, suspeito ou ambiguo — nunca inventa dados |
+| SELECT-only SQL | DML/DDL operations (DROP, DELETE, INSERT, UPDATE, ALTER) are blocked |
+| Single statement | Multi-statement SQL with `;` is rejected (Athena requirement) |
+| Auto LIMIT | Added when missing (default: 10,000) |
+| Max LIMIT | Hard-capped at 10,000 rows per query |
+| Partition filter | Required on partitioned tables |
+| Retry with feedback | Up to 3 attempts with previous errors injected into the prompt |
+| Export limit | Maximum 50,000 rows for download |
+| Empty result analysis | Classifies as expected, suspicious, or ambiguous — never fabricates data |
 
 ---
 
-## Resultado Vazio (0 Linhas)
+## Empty Result Handling (0 Rows)
 
-Quando a query executa com sucesso mas retorna 0 linhas, o agente `empty_result_analyzer` avalia:
+When a query succeeds but returns 0 rows, the `empty_result_analyzer` agent evaluates:
 
-| Classificacao | Significado | Acao |
+| Classification | Meaning | Action |
 |---|---|---|
-| `expected` | Plausivel que nao existam dados (feriado, periodo recente, produto novo) | Informa o usuario |
-| `suspicious` | Filtros excessivos, data no futuro, JOIN sem relacao | Sugere ajustes concretos de filtros |
-| `ambiguous` | Impossivel determinar a causa sem mais contexto | Pede mais informacoes ao usuario |
+| `expected` | Plausible that no data exists (holiday, recent period, new product) | Informs the user |
+| `suspicious` | Overly restrictive filters, future date, unrelated JOIN | Suggests concrete filter adjustments |
+| `ambiguous` | Cannot determine the cause without more context | Asks the user for more information |
 
-O analyzer nunca inventa dados. Ele analisa o SQL, schema, regras de negocio e data atual para classificar.
+The analyzer never fabricates data. It examines the SQL, schema, business rules, and current date to classify.
 
 ---
 
-## Extracao Automatica de Datas
+## Automatic Date Extraction
 
-O classifier extrai periodos de datas da pergunta do usuario, usando a data atual como referencia:
+The classifier extracts date ranges from the user's question, using the current date as reference:
 
-| Pergunta | `date_start` | `date_end` |
+| Question | `date_start` | `date_end` |
 |---|---|---|
-| "Vendas de janeiro 2024" | `2024-01-01` | `2024-01-31` |
-| "Ultimos 7 dias" | *(calculado)* | *(data atual)* |
-| "Ultimo mes" | *(1o dia mes anterior)* | *(ultimo dia mes anterior)* |
-| "Ontem" | *(dia anterior)* | *(dia anterior)* |
-| Sem mencao de data | `null` | `null` |
+| "January 2024 sales" | `2024-01-01` | `2024-01-31` |
+| "Last 7 days" | *(computed)* | *(current date)* |
+| "Last month" | *(1st of previous month)* | *(last day of previous month)* |
+| "Yesterday" | *(previous day)* | *(previous day)* |
+| No date mentioned | `null` | `null` |
 
-Quando nenhuma data e informada, o SQL generator usa automaticamente os dados mais recentes (ultimos 7 dias via particao).
+When no date is specified, the SQL generator automatically uses the most recent data (last 7 days via partition).
 
 ---
 
-## Estrutura do Projeto
+## Project Structure
 
 ```
 text-to-sql/
-├── app.py                              # UI Streamlit (chat + graficos + download)
-├── pytest.ini                          # Configuracao do pytest
-├── requirements.txt                    # Dependencias Python
-├── .env.example                        # Template de variaveis de ambiente
-├── exports/                            # Diretorio de arquivos exportados
+├── app.py                              # Streamlit UI (chat + charts + download)
+├── pytest.ini                          # pytest configuration
+├── requirements.txt                    # Python dependencies
+├── .env.example                        # Environment variables template
+├── exports/                            # Exported files directory
 ├── src/
-│   ├── config.py                       # Configuracao da aplicacao (Pydantic)
-│   ├── state.py                        # Modelos de estado do pipeline
-│   ├── pipeline.py                     # Orquestrador LangGraph (grafo + multi-base)
-│   ├── llm_client.py                   # Wrapper OpenAI
-│   ├── logger.py                       # Observabilidade estruturada
+│   ├── config.py                       # Application configuration (Pydantic)
+│   ├── state.py                        # Pipeline state models
+│   ├── pipeline.py                     # LangGraph orchestrator (graph + multi-db)
+│   ├── llm_client.py                   # OpenAI wrapper
+│   ├── logger.py                       # Structured observability
 │   ├── agents/
-│   │   ├── classifier.py              # Classificacao de intencao + extracao de datas
-│   │   ├── router.py                  # Roteamento para banco/tabelas
-│   │   ├── schema_retrieval.py        # Carga de schema, exemplos e regras
-│   │   ├── sql_generator.py           # Geracao de SQL com contexto
-│   │   ├── sql_validator.py           # Validacao heuristica + LLM
-│   │   ├── execution.py               # Execucao no Athena (boto3)
-│   │   ├── empty_result_analyzer.py   # Analise de resultado vazio
-│   │   ├── insight.py                 # Geracao de insights de negocio
-│   │   ├── visualization.py           # Geracao de graficos (Plotly Express)
-│   │   ├── export.py                  # Export CSV/XLSX/JSON
-│   │   └── response_composer.py       # Montagem da resposta final
+│   │   ├── classifier.py              # Intent classification + date extraction
+│   │   ├── router.py                  # Database/table routing
+│   │   ├── schema_retrieval.py        # Schema, examples, and rules loading
+│   │   ├── sql_generator.py           # Context-aware SQL generation
+│   │   ├── sql_validator.py           # Heuristic + LLM validation
+│   │   ├── execution.py               # Athena execution (boto3)
+│   │   ├── empty_result_analyzer.py   # Empty result analysis
+│   │   ├── insight.py                 # Business insight generation
+│   │   ├── visualization.py           # Chart generation (Plotly Express)
+│   │   ├── export.py                  # CSV/XLSX/JSON export
+│   │   └── response_composer.py       # Final response assembly
 │   └── knowledge/
-│       ├── loader.py                  # Leitor da base de conhecimento
+│       ├── loader.py                  # Knowledge base reader
 │       └── data/
-│           ├── databases.json         # Metadados de tabelas/colunas
-│           ├── sql_examples.json      # Exemplos de queries
-│           └── business_rules.json    # Regras de negocio
+│           ├── databases.json         # Table/column metadata
+│           ├── sql_examples.json      # Query examples
+│           └── business_rules.json    # Business rules
 └── tests/
-    ├── conftest.py                    # Fixtures e mocks compartilhados
+    ├── conftest.py                    # Shared fixtures & mocks
     ├── test_classifier.py
     ├── test_router.py
     ├── test_sql_generator.py
@@ -363,48 +362,48 @@ text-to-sql/
 
 ---
 
-## Testes
+## Tests
 
-Todos os testes usam mocks de LLM e Athena — nenhuma chamada real e feita.
+All tests use mocked LLM and Athena clients — no real API calls are made.
 
 ```bash
-# Rodar todos
+# Run all tests
 pytest
 
-# Rodar com output detalhado
+# Run with verbose output
 pytest -v
 
-# Rodar um modulo especifico
+# Run a specific module
 pytest tests/test_empty_result_analyzer.py -v
 
-# Rodar apenas E2E
+# Run E2E tests only
 pytest tests/test_e2e.py -v
 ```
 
 ---
 
-## Adicionando Novos Bancos de Dados
+## Adding New Databases
 
-1. Crie/atualize as tabelas no Athena/Glue Catalog (fonte principal do roteamento).
-2. Opcionalmente enriqueca `src/knowledge/data/databases.json` com descricoes.
-3. Adicione exemplos SQL em `src/knowledge/data/sql_examples.json`.
-4. Adicione regras de negocio em `src/knowledge/data/business_rules.json`.
+1. Create or update tables in Athena/Glue Catalog (primary source for routing).
+2. Optionally enrich `src/knowledge/data/databases.json` with descriptions.
+3. Add SQL examples to `src/knowledge/data/sql_examples.json`.
+4. Add business rules to `src/knowledge/data/business_rules.json`.
 
 ---
 
 ## Troubleshooting
 
-| Problema | Verificacao |
+| Problem | What to check |
 |---|---|
-| Erro de credencial AWS | Valide `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` e permissoes do Athena/S3 |
-| Query falha por bucket | Confira `ATHENA_OUTPUT_BUCKET` (formato: `s3://bucket-name/`) |
-| Sem tabelas na UI | Valide catalog, workgroup, regiao e permissoes de leitura no Glue Catalog |
-| Sem resposta da LLM | Valide `OPENAI_API_KEY` e conectividade com a API |
-| Timeout no Athena | Verifique se a query nao escaneia dados demais — ajuste `cost_threshold_bytes` |
-| Grafico nao aparece | Certifique-se que a pergunta contem palavras-chave de visualizacao (ex.: "grafico", "chart") |
+| AWS credential error | Validate `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and Athena/S3 permissions |
+| Query fails on bucket | Check `ATHENA_OUTPUT_BUCKET` format (`s3://bucket-name/`) |
+| No tables in UI | Validate catalog, workgroup, region, and Glue Catalog read permissions |
+| No LLM response | Validate `OPENAI_API_KEY` and API connectivity |
+| Athena timeout | Check if the query scans too much data — adjust `cost_threshold_bytes` |
+| Chart not showing | Make sure the question contains visualization keywords (e.g., "chart", "plot", "grafico") |
 
 ---
 
-## Licenca
+## License
 
-Este projeto e de uso interno. Consulte o time responsavel para detalhes de licenciamento.
+This project is for internal use. Contact the responsible team for licensing details.
