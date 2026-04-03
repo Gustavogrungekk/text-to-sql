@@ -63,6 +63,13 @@ class VisualizationResult(BaseModel):
     should_visualize: bool = False
 
 
+class EmptyResultAnalysis(BaseModel):
+    classification: str = Field(default="ambiguous", description="expected, suspicious, or ambiguous")
+    reason: str = ""
+    suggestions: List[str] = Field(default_factory=list)
+    filters_analysis: str = ""
+
+
 class ExportResult(BaseModel):
     format: str = ""
     file_path: str = ""
@@ -102,6 +109,9 @@ class AgentState(BaseModel):
 
     # Insight
     insight: Optional[InsightResult] = None
+
+    # Empty result analysis
+    empty_result_analysis: Optional[EmptyResultAnalysis] = None
 
     # Visualization
     visualization: Optional[VisualizationResult] = None

@@ -74,11 +74,23 @@ def compose_response(state: AgentState, llm: LLMClient) -> AgentState:
 
     if state.execution:
         if state.execution.success:
-            sample = state.execution.data[:20]
-            parts.append(f"A consulta retornou {state.execution.row_count} linhas.")
-            parts.append(f"Amostra dos resultados:\n{json.dumps(sample, indent=2, default=str)}")
-            parts.append(f"Bytes escaneados: {state.execution.bytes_scanned}")
-            parts.append(f"Tempo de execução: {state.execution.execution_time_ms}ms")
+            if state.execution.row_count == 0 and state.empty_result_analysis:
+                analysis = state.empty_result_analysis
+                parts.append("A consulta retornou 0 linhas.")
+                parts.append(f"Classificação do resultado vazio: {analysis.classification}")
+                parts.append(f"Análise: {analysis.reason}")
+                if analysis.filters_analysis:
+                    parts.append(f"Filtros aplicados: {analysis.filters_analysis}")
+                if analysis.suggestions:
+                    parts.append("Sugestões:\n- " + "\n- ".join(analysis.suggestions))
+            elif state.execution.row_count == 0:
+                parts.append("A consulta retornou 0 linhas.")
+            else:
+                sample = state.execution.data[:20]
+                parts.append(f"A consulta retornou {state.execution.row_count} linhas.")
+                parts.append(f"Amostra dos resultados:\n{json.dumps(sample, indent=2, default=str)}")
+                parts.append(f"Bytes escaneados: {state.execution.bytes_scanned}")
+                parts.append(f"Tempo de execução: {state.execution.execution_time_ms}ms")
         else:
             parts.append(f"A consulta falhou: {state.execution.error}")
 

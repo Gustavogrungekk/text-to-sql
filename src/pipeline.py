@@ -9,6 +9,7 @@ from typing import Any, Dict
 from langgraph.graph import END, StateGraph
 
 from src.agents.classifier import classify
+from src.agents.empty_result_analyzer import analyze_empty_result
 from src.agents.execution import execute_query
 from src.agents.export import export_data
 from src.agents.insight import generate_insights
@@ -60,6 +61,9 @@ def _build_graph(config: AppConfig | None = None, llm: LLMClient | None = None):
     def execution_node(state: AgentState) -> AgentState:
         return execute_query(state, config.athena)
 
+    def empty_result_node(state: AgentState) -> AgentState:
+        return analyze_empty_result(state, llm)
+
     def insight_node(state: AgentState) -> AgentState:
         return generate_insights(state, llm)
 
@@ -93,6 +97,8 @@ def _build_graph(config: AppConfig | None = None, llm: LLMClient | None = None):
 
     def after_execution(state: AgentState) -> str:
         if state.execution and state.execution.success:
+            if state.execution.row_count == 0:
+                return "empty_analysis"
             return "insight"
         return "respond"
 
@@ -120,6 +126,7 @@ def _build_graph(config: AppConfig | None = None, llm: LLMClient | None = None):
     graph.add_node("generate", generator_node)
     graph.add_node("validate", validator_node)
     graph.add_node("execute", execution_node)
+    graph.add_node("empty_analysis", empty_result_node)
     graph.add_node("insight", insight_node)
     graph.add_node("visualize", visualization_node)
     graph.add_node("export", export_node)
@@ -144,8 +151,11 @@ def _build_graph(config: AppConfig | None = None, llm: LLMClient | None = None):
 
     graph.add_conditional_edges("execute", after_execution, {
         "insight": "insight",
+        "empty_analysis": "empty_analysis",
         "respond": "respond",
     })
+
+    graph.add_edge("empty_analysis", "respond")
 
     graph.add_conditional_edges("insight", after_insight, {
         "visualize": "visualize",
