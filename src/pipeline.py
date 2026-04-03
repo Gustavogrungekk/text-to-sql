@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from datetime import datetime
 from typing import Any, Dict
 
@@ -18,8 +19,21 @@ from src.agents.sql_generator import generate_sql
 from src.agents.sql_validator import validate_sql
 from src.agents.visualization import generate_visualization
 from src.config import AppConfig, load_config
+from src.knowledge.loader import load_catalog_snapshot
 from src.llm_client import LLMClient
+from src.logger import log_agent_action
 from src.state import AgentState
+
+_NON_ALNUM_RE = re.compile(r"[^a-z0-9]+")
+_DB_SEP_RE = re.compile(r"[_\-.]+")
+
+
+def _normalize_for_match(text: str) -> str:
+    return _NON_ALNUM_RE.sub(" ", text.lower()).strip()
+
+
+def _normalize_db_name(db_name: str) -> str:
+    return _normalize_for_match(_DB_SEP_RE.sub(" ", db_name))
 
 
 def _build_graph(config: AppConfig | None = None, llm: LLMClient | None = None):
@@ -158,6 +172,186 @@ class Pipeline:
         self._llm = llm or LLMClient(self._config.llm)
         self._graph = _build_graph(self._config, self._llm)
 
+    def _invoke_graph(
+        self,
+        user_message: str,
+        conversation_history: list[Dict[str, str]],
+        export_requested: bool,
+        export_format: str,
+        visualization_requested: bool,
+        requested_chart_type: str,
+        preferred_database: str,
+        forced_database: str = "",
+        catalog_metadata: Dict[str, Any] | None = None,
+    ) -> AgentState:
+        initial_state = AgentState(
+            user_message=user_message,
+            conversation_history=conversation_history,
+            export_requested=export_requested,
+            export_format=export_format,
+            visualization_requested=visualization_requested,
+            requested_chart_type=requested_chart_type,
+            preferred_database=preferred_database,
+            forced_database=forced_database,
+            catalog_metadata=catalog_metadata or {},
+            current_date=datetime.now().strftime("%Y-%m-%d"),
+        )
+
+        final_state = self._graph.invoke(initial_state)
+
+        if isinstance(final_state, dict):
+            return AgentState(**final_state)
+        return final_state
+
+    def _extract_explicit_databases(
+        self,
+        user_message: str,
+        catalog: Dict[str, Any],
+    ) -> list[str]:
+        available_databases = list(catalog.get("databases", {}).keys())
+        if len(available_databases) < 2:
+            return []
+
+        normalized_msg = _normalize_for_match(user_message)
+        matches: list[str] = []
+        for db_name in available_databases:
+            normalized_db = _normalize_db_name(db_name)
+            if not normalized_db:
+                continue
+            pattern = rf"\b{re.escape(normalized_db)}\b"
+            if re.search(pattern, normalized_msg):
+                matches.append(db_name)
+        return matches
+
+    def _run_multi_database(
+        self,
+        user_message: str,
+        conversation_history: list[Dict[str, str]],
+        requested_databases: list[str],
+        catalog_metadata: Dict[str, Any],
+        preferred_database: str,
+        export_requested: bool,
+        export_format: str,
+        visualization_requested: bool,
+        requested_chart_type: str,
+    ) -> AgentState:
+        sub_states: list[AgentState] = []
+        for db_name in requested_databases:
+            sub_state = self._invoke_graph(
+                user_message=user_message,
+                conversation_history=conversation_history,
+                export_requested=False,
+                export_format="",
+                visualization_requested=False,
+                requested_chart_type="",
+                preferred_database=db_name,
+                forced_database=db_name,
+                catalog_metadata=catalog_metadata,
+            )
+            sub_states.append(sub_state)
+
+        multi_results: list[Dict[str, Any]] = []
+        response_parts = [
+            "Detectei uma consulta multi-base e executei uma query separada por banco.",
+            "No Athena, cada execucao aceita apenas um statement SQL, entao esse fluxo evita o uso de queries encadeadas com ';'.",
+        ]
+
+        combined_logs: list[Dict[str, Any]] = []
+        for idx, sub_state in enumerate(sub_states):
+            expected_db = requested_databases[idx]
+            routing = sub_state.routing
+            selected_db = routing.database if routing else expected_db
+            selected_tables = routing.tables if routing else []
+            execution_success = bool(sub_state.execution and sub_state.execution.success)
+
+            result_item = {
+                "database": selected_db,
+                "tables": selected_tables,
+                "sql": sub_state.generated_sql,
+                "success": execution_success,
+                "error": sub_state.error or (sub_state.execution.error if sub_state.execution else ""),
+                "row_count": sub_state.execution.row_count if sub_state.execution else 0,
+                "execution_time_ms": sub_state.execution.execution_time_ms if sub_state.execution else 0,
+                "bytes_scanned": sub_state.execution.bytes_scanned if sub_state.execution else 0,
+                "data": sub_state.execution.data if sub_state.execution else [],
+                "columns": sub_state.execution.columns if sub_state.execution else [],
+                "insights": sub_state.insight.insights if sub_state.insight else [],
+                "summary": sub_state.insight.summary if sub_state.insight else "",
+            }
+            multi_results.append(result_item)
+            combined_logs.extend(sub_state.agent_logs)
+
+            section_lines = [f"### Banco `{selected_db}`"]
+            if selected_tables:
+                section_lines.append(f"Tabelas selecionadas: {', '.join(selected_tables)}.")
+            if sub_state.generated_sql:
+                section_lines.append(f"```sql\n{sub_state.generated_sql}\n```")
+            if execution_success and sub_state.execution:
+                section_lines.append(
+                    f"Resultado: {sub_state.execution.row_count} linhas em {sub_state.execution.execution_time_ms} ms."
+                )
+                if sub_state.insight and sub_state.insight.summary:
+                    section_lines.append(f"Resumo: {sub_state.insight.summary}")
+            elif sub_state.error:
+                section_lines.append(f"Erro: {sub_state.error}")
+            elif sub_state.execution and sub_state.execution.error:
+                section_lines.append(f"Erro na execucao: {sub_state.execution.error}")
+            else:
+                section_lines.append("Nao foi possivel concluir essa base.")
+
+            response_parts.append("\n".join(section_lines))
+
+        if export_requested or visualization_requested:
+            response_parts.append(
+                "Observacao: exportacao e visualizacao automatica foram desabilitadas no modo multi-base. "
+                "Se precisar desses artefatos, rode por banco individualmente."
+            )
+
+        final_state = AgentState(
+            user_message=user_message,
+            conversation_history=conversation_history,
+            export_requested=export_requested,
+            export_format=export_format,
+            visualization_requested=visualization_requested,
+            requested_chart_type=requested_chart_type,
+            preferred_database=preferred_database,
+            current_date=datetime.now().strftime("%Y-%m-%d"),
+            catalog_metadata=catalog_metadata,
+            multi_database_mode=True,
+            multi_db_results=multi_results,
+            final_response="\n\n".join(response_parts),
+        )
+
+        representative = next(
+            (s for s in sub_states if s.execution and s.execution.success),
+            sub_states[0] if sub_states else None,
+        )
+        if representative:
+            final_state.classification = representative.classification
+            final_state.routing = representative.routing
+            final_state.schema_context = representative.schema_context
+            final_state.generated_sql = representative.generated_sql
+            final_state.sql_attempt = representative.sql_attempt
+            final_state.validation = representative.validation
+            final_state.execution = representative.execution
+            final_state.insight = representative.insight
+            final_state.visualization = representative.visualization
+            final_state.export = representative.export
+
+        final_state.agent_logs = combined_logs
+        final_state.agent_logs.append(
+            log_agent_action(
+                "multi_database_orchestrator",
+                "completed",
+                {
+                    "databases": requested_databases,
+                    "total_queries": len(requested_databases),
+                    "successes": sum(1 for item in multi_results if item["success"]),
+                },
+            )
+        )
+        return final_state
+
     def run(
         self,
         user_message: str,
@@ -169,20 +363,33 @@ class Pipeline:
         preferred_database: str = "",
     ) -> AgentState:
         """Run the full pipeline and return the final state."""
-        initial_state = AgentState(
+        history = conversation_history or []
+        catalog_metadata = load_catalog_snapshot(self._config)
+        explicit_databases = self._extract_explicit_databases(
+            user_message,
+            catalog_metadata,
+        )
+
+        if len(explicit_databases) > 1:
+            return self._run_multi_database(
+                user_message=user_message,
+                conversation_history=history,
+                requested_databases=explicit_databases,
+                catalog_metadata=catalog_metadata,
+                preferred_database=preferred_database,
+                export_requested=export_requested,
+                export_format=export_format,
+                visualization_requested=visualization_requested,
+                requested_chart_type=requested_chart_type,
+            )
+
+        return self._invoke_graph(
             user_message=user_message,
-            conversation_history=conversation_history or [],
+            conversation_history=history,
             export_requested=export_requested,
             export_format=export_format,
             visualization_requested=visualization_requested,
             requested_chart_type=requested_chart_type,
             preferred_database=preferred_database,
-            current_date=datetime.now().strftime("%Y-%m-%d"),
+            catalog_metadata=catalog_metadata,
         )
-
-        final_state = self._graph.invoke(initial_state)
-
-        # LangGraph may return a dict; convert back to AgentState
-        if isinstance(final_state, dict):
-            return AgentState(**final_state)
-        return final_state

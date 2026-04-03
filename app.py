@@ -129,18 +129,41 @@ if user_input:
         st.markdown(state.final_response)
 
         # --- SQL ---
-        if state.generated_sql:
+        if state.generated_sql and not state.multi_database_mode:
             with st.expander("Consulta SQL", expanded=False):
                 st.code(state.generated_sql, language="sql")
 
-        # --- Tabela de dados ---
-        if state.execution and state.execution.success and state.execution.data:
+        # --- Multi-base details ---
+        if state.multi_database_mode and state.multi_db_results:
+            for item in state.multi_db_results:
+                db_name = item.get("database", "desconhecido")
+                sql_text = item.get("sql", "")
+                success = bool(item.get("success", False))
+                row_count = int(item.get("row_count", 0))
+                data = item.get("data", [])
+
+                if sql_text:
+                    with st.expander(f"SQL ({db_name})", expanded=False):
+                        st.code(sql_text, language="sql")
+
+                if success and data:
+                    with st.expander(f"Resultados ({db_name}) - {row_count} linhas", expanded=True):
+                        df = pd.DataFrame(data)
+                        st.dataframe(df, use_container_width=True)
+                elif not success:
+                    err = item.get("error", "Falha sem detalhe.")
+                    st.warning(f"Base {db_name}: {err}")
+        elif state.execution and state.execution.success and state.execution.data:
+            # --- Tabela de dados ---
             with st.expander(f"Resultados ({state.execution.row_count} linhas)", expanded=True):
                 df = pd.DataFrame(state.execution.data)
                 st.dataframe(df, use_container_width=True)
 
         # --- Visualização (somente se usuário pediu) ---
-        if state.visualization and state.visualization.should_visualize and state.visualization.chart_json:
+        if (not state.multi_database_mode
+                and state.visualization
+                and state.visualization.should_visualize
+                and state.visualization.chart_json):
             with st.expander("Gráfico", expanded=True):
                 try:
                     chart_config = json.loads(state.visualization.chart_json)
@@ -154,7 +177,10 @@ if user_input:
                     st.warning(f"Não foi possível renderizar o gráfico: {e}")
 
         # --- Botões de exportação ---
-        if state.execution and state.execution.success and state.execution.data:
+        if (not state.multi_database_mode
+                and state.execution
+                and state.execution.success
+                and state.execution.data):
             col1, col2, col3 = st.columns(3)
             df = pd.DataFrame(state.execution.data)
 
@@ -172,7 +198,7 @@ if user_input:
                                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
         # --- Metadados de execução ---
-        if state.execution and state.execution.success:
+        if not state.multi_database_mode and state.execution and state.execution.success:
             with st.expander("Detalhes da execução", expanded=False):
                 st.write(f"**Tempo de execução:** {state.execution.execution_time_ms}ms")
                 st.write(f"**Bytes escaneados:** {state.execution.bytes_scanned:,}")

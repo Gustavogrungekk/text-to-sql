@@ -55,6 +55,11 @@ def _contains_dangerous_operation(sql: str) -> bool:
     return any(re.search(pattern, sql, re.IGNORECASE) for pattern in _DANGEROUS_PATTERNS)
 
 
+def _contains_multiple_statements(sql: str) -> bool:
+    parts = [p.strip() for p in sql.strip().split(";") if p.strip()]
+    return len(parts) > 1
+
+
 def _apply_limit_guardrails(
     sql: str,
     guardrails: GuardrailsConfig,
@@ -108,6 +113,10 @@ def validate_sql(state: AgentState, llm: LLMClient, guardrails: GuardrailsConfig
 
     if not _is_select_query(sql):
         errors.append("A consulta deve ser um SELECT.")
+    if _contains_multiple_statements(sql):
+        errors.append(
+            "A consulta deve conter apenas um statement SQL por execucao no Athena."
+        )
 
     if errors:
         state.validation = ValidationResult(is_valid=False, errors=errors, warnings=warnings)

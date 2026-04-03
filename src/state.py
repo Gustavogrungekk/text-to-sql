@@ -75,6 +75,7 @@ class AgentState(BaseModel):
     user_message: str = ""
     conversation_history: List[Dict[str, str]] = Field(default_factory=list)
     preferred_database: str = ""
+    forced_database: str = ""
     current_date: str = ""
 
     # Classification
@@ -116,6 +117,8 @@ class AgentState(BaseModel):
 
     # Response
     final_response: str = ""
+    multi_database_mode: bool = False
+    multi_db_results: List[Dict[str, Any]] = Field(default_factory=list)
 
     # Control
     error: Optional[str] = None

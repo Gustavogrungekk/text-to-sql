@@ -38,6 +38,17 @@ class TestSQLValidator:
 
         assert result.validation.is_valid is False
 
+    def test_blocks_multiple_statements_for_athena(self, mock_llm, state_with_schema):
+        """Validator bloqueia múltiplos statements SQL separados por ';'."""
+        state_with_schema.generated_sql = (
+            "SELECT event_type FROM analytics.events LIMIT 5; "
+            "SELECT user_id FROM analytics.users LIMIT 5"
+        )
+        result = validate_sql(state_with_schema, mock_llm)
+
+        assert result.validation.is_valid is False
+        assert any("apenas um statement" in e.lower() for e in result.validation.errors)
+
     def test_warns_on_missing_limit(self, mock_llm, state_with_schema):
         """Validator avisa e auto-adiciona LIMIT quando ausente."""
         state_with_schema.generated_sql = (

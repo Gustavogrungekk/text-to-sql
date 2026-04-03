@@ -55,7 +55,9 @@ def route(state: AgentState, llm: LLMClient, config: AppConfig | None = None) ->
     )
 
     selected_database = result.get("database", "")
-    if selected_database not in available_databases:
+    if state.forced_database and state.forced_database in available_databases:
+        selected_database = state.forced_database
+    elif selected_database not in available_databases:
         if state.preferred_database and state.preferred_database in available_databases:
             selected_database = state.preferred_database
         else:

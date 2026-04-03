@@ -75,3 +75,24 @@ class TestRouter:
         result = route(state, mock_llm)
 
         assert any(log["agent"] == "router" for log in result.agent_logs)
+
+    def test_forced_database_overrides_llm_choice(self, mock_llm):
+        """Router respeita forced_database no modo multi-base."""
+        mock_llm.set_response("agente de roteamento", {
+            "database": "analytics",
+            "tables": ["events"],
+            "reasoning": "LLM sugeriu analytics",
+        })
+
+        state = AgentState(user_message="consulta multi-base", forced_database="sales")
+        state.catalog_metadata = {
+            "databases": {
+                "analytics": {"tables": {"events": {"columns": []}}},
+                "sales": {"tables": {"orders": {"columns": []}}},
+            }
+        }
+
+        result = route(state, mock_llm)
+
+        assert result.routing is not None
+        assert result.routing.database == "sales"

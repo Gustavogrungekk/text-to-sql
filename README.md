@@ -2,6 +2,8 @@
 
 Production-grade multi-agent system that translates natural language into optimized SQL for AWS Athena, executes queries, generates business insights, creates visualizations, and supports data export.
 
+Now includes multi-database orchestration: when a single question explicitly mentions more than one database, the system runs one SQL query per database sequentially and consolidates the response.
+
 ## Architecture
 
 ```
@@ -151,12 +153,14 @@ Edit `.env`:
 ## Guardrails
 
 - All SQL validated before execution (heuristic + LLM)
+- Multi-statement SQL (for example `SELECT ...; SELECT ...`) is blocked
 - LIMIT clause auto-added when missing (default 10,000)
 - LIMIT hard-capped to 10,000 rows
 - Dangerous operations blocked (DROP, DELETE, etc.)
 - Retry up to 3 attempts with error feedback
 - Partition filters enforced on partitioned tables
 - Export row limits enforced
+- Multi-database questions are executed as sequential single-statement Athena runs (one per database)
 
 ## Extração Automática de Datas
 
